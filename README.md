@@ -1,32 +1,46 @@
-# React + TypeScript + Vite
+# Project OS
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A React + TypeScript + Vite application with OIDC authentication.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 18+
+- npm
 
-## React Compiler
+## Installation
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Environment Setup
+
+Copy the example environment file and configure your values:
+
+```bash
+cp .env.example .env
+```
+
+Update the following variables in `.env`:
+
+- `VITE_API_URL` - API base URL
+- `VITE_OIDC_TENANT_ID` - OIDC tenant ID
+- `VITE_CLIENT_ID` - OAuth client ID
+- `VITE_CLIENT_SECRET` - OAuth client secret
+- `VITE_TENANT_ID` - Tenant ID
+- `VITE_REDIRECT_URI` - OAuth redirect URI
+
+## Scripts
+
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run preview  # Preview production build
+```
+
+## Tech Stack
+
+- React 19
+- TypeScript
+- Vite
+- Oxlint
