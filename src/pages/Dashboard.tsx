@@ -222,8 +222,8 @@ export function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    oidcLogout();
+  const handleLogout = async () => {
+    await oidcLogout();
   };
 
   useEffect(() => {

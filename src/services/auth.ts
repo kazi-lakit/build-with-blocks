@@ -57,12 +57,10 @@ export interface TokenResponse {
 }
 
 export async function startAuthorization(): Promise<void> {
-  const state = generateRandomString(32);
   const nonce = generateRandomString(32);
   const codeVerifier = generateRandomString(64);
   const codeChallenge = base64UrlEncode(sha256Bytes(codeVerifier));
 
-  sessionStorage.setItem('oidc_state', state);
   sessionStorage.setItem('oidc_nonce', nonce);
   sessionStorage.setItem('oidc_code_verifier', codeVerifier);
 
@@ -70,20 +68,6 @@ export async function startAuthorization(): Promise<void> {
   initiateUrl.searchParams.set('x-blocks-key', OIDC_CONFIG.tenant_id);
   initiateUrl.searchParams.set('clientId', OIDC_CONFIG.client_id);
   initiateUrl.searchParams.set('redirectUri', OIDC_CONFIG.redirect_uri);
-
-  const params = new URLSearchParams({
-    client_id: OIDC_CONFIG.client_id,
-    response_type: 'code',
-    redirect_uri: OIDC_CONFIG.redirect_uri,
-    scope: OIDC_CONFIG.scope,
-    state,
-    nonce,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    tenant_id: OIDC_CONFIG.tenant_id,
-  });
-
-  const oidcAuthUrl = `${OIDC_CONFIG.issuer}/api/oidc/authorize?${params.toString()}`;
 
   try {
     const response = await fetch(initiateUrl.toString(), {
@@ -99,8 +83,17 @@ export async function startAuthorization(): Promise<void> {
 
     if (response.ok) {
       const data = await response.json().catch(() => null);
-      if (data?.authorizationUrl || data?.url || data?.authorization_url) {
-        window.location.href = data.authorizationUrl || data.url || data.authorization_url;
+      const authUrl = data?.authorizationUrl || data?.url || data?.authorization_url || data?.redirectUrl;
+      if (authUrl) {
+        try {
+          const stateFromUrl = new URL(authUrl, window.location.origin).searchParams.get('state');
+          if (stateFromUrl) {
+            sessionStorage.setItem('oidc_state', stateFromUrl);
+          }
+        } catch {
+          /* ignore */
+        }
+        window.location.href = authUrl;
         return;
       }
     }
@@ -108,7 +101,22 @@ export async function startAuthorization(): Promise<void> {
     console.warn('IDP initiate call failed, falling back to direct authorize:', error);
   }
 
-  window.location.href = oidcAuthUrl;
+  const state = generateRandomString(32);
+  sessionStorage.setItem('oidc_state', state);
+
+  const params = new URLSearchParams({
+    client_id: OIDC_CONFIG.client_id,
+    response_type: 'code',
+    redirect_uri: OIDC_CONFIG.redirect_uri,
+    scope: OIDC_CONFIG.scope,
+    state,
+    nonce,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    tenant_id: OIDC_CONFIG.tenant_id,
+  });
+
+  window.location.href = `${OIDC_CONFIG.issuer}/api/oidc/authorize?${params.toString()}`;
 }
 
 export async function handleAuthorizationCallback(): Promise<TokenResponse | null> {
@@ -238,20 +246,40 @@ export async function refreshAccessToken(): Promise<boolean> {
   }
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
   const idToken = localStorage.getItem('id_token');
-  const params = new URLSearchParams({
-    client_id: OIDC_CONFIG.client_id,
-    post_logout_redirect_uri: window.location.origin,
-  });
-  if (idToken) params.append('id_token_hint', idToken);
+  const revokeUrl = `${OIDC_CONFIG.issuer}/api/oidc/revoke?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const basicAuth = btoa(`${OIDC_CONFIG.client_id}:${OIDC_CONFIG.client_secret}`);
+
+  if (idToken) {
+    try {
+      await fetch(revokeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${basicAuth}`,
+          'x-blocks-key': OIDC_CONFIG.tenant_id,
+        },
+        body: new URLSearchParams({
+          token: idToken,
+          token_type_hint: 'id_token',
+          client_id: OIDC_CONFIG.client_id,
+        }),
+      });
+    } catch (error) {
+      console.warn('Token revocation failed:', error);
+    }
+  }
 
   localStorage.removeItem('access_token');
   localStorage.removeItem('id_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('token_expiry');
+  sessionStorage.removeItem('oidc_state');
+  sessionStorage.removeItem('oidc_nonce');
+  sessionStorage.removeItem('oidc_code_verifier');
 
-  window.location.href = `${OIDC_CONFIG.issuer}/api/oidc/logout?tenant_id=${OIDC_CONFIG.tenant_id}&${params.toString()}`;
+  window.location.href = '/';
 }
 
 export function isAuthenticated(): boolean {
