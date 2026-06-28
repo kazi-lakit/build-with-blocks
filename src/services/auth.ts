@@ -181,7 +181,7 @@ export async function getUserInfo(): Promise<OIDCUserInfo | null> {
   const accessToken = localStorage.getItem('access_token');
   if (!accessToken) return null;
 
-  const userInfoUrl = `${OIDC_CONFIG.issuer}/api/auth/userinfo?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const userInfoUrl = `${OIDC_CONFIG.issuer}/api/auth/me?tenant_id=${OIDC_CONFIG.tenant_id}`;
   
   try {
     const response = await fetch(userInfoUrl, {
