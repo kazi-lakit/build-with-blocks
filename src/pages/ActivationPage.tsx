@@ -39,7 +39,7 @@ export function ActivationPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${AUTH_CONFIG.authority}/api/auth/activate`, {
+      const response = await fetch(`${AUTH_CONFIG.authority}/auth/activate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
