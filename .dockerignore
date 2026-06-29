@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+.git
+.gitignore
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+.vscode
+.idea
+.vite
+.DS_Store
+README.md
+.kilo

@@ -74,25 +74,31 @@ export async function startAuthorization(): Promise<void> {
       method: 'GET',
       headers: {
         'accept': '*/*',
-        'origin': window.location.origin,
-        'referer': window.location.origin + '/',
         'x-blocks-key': OIDC_CONFIG.tenant_id,
       },
-      credentials: 'include',
     });
 
     if (response.ok) {
       const data = await response.json().catch(() => null);
       const authUrl = data?.authorizationUrl || data?.url || data?.authorization_url || data?.redirectUrl;
       if (authUrl) {
+        let state: string | null = null;
         try {
-          const stateFromUrl = new URL(authUrl, window.location.origin).searchParams.get('state');
-          if (stateFromUrl) {
-            sessionStorage.setItem('oidc_state', stateFromUrl);
-          }
+          state = new URL(authUrl).searchParams.get('state');
         } catch {
           /* ignore */
         }
+        if (!state) {
+          state =
+            (data as Record<string, unknown> | null)?.state as string ??
+            (data as Record<string, unknown> | null)?.sessionState as string ??
+            (data as Record<string, unknown> | null)?.session_state as string ??
+            null;
+        }
+        if (state) {
+          sessionStorage.setItem('oidc_state', state);
+        }
+        sessionStorage.setItem('oidc_flow', 'idp');
         window.location.href = authUrl;
         return;
       }
@@ -103,6 +109,7 @@ export async function startAuthorization(): Promise<void> {
 
   const state = generateRandomString(32);
   sessionStorage.setItem('oidc_state', state);
+  sessionStorage.setItem('oidc_flow', 'oidc');
 
   const params = new URLSearchParams({
     client_id: OIDC_CONFIG.client_id,
@@ -117,6 +124,18 @@ export async function startAuthorization(): Promise<void> {
   });
 
   window.location.href = `${OIDC_CONFIG.issuer}/api/oidc/authorize?${params.toString()}`;
+}
+
+interface IDPCallbackResponse {
+  refresh_token?: string;
+  refreshToken?: string;
+  id_token?: string;
+  idToken?: string;
+  access_token?: string;
+  accessToken?: string;
+  expires_in?: number;
+  expiresIn?: number;
+  [key: string]: unknown;
 }
 
 export async function handleAuthorizationCallback(): Promise<TokenResponse | null> {
@@ -135,47 +154,110 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
   }
 
   const savedState = sessionStorage.getItem('oidc_state');
-  const codeVerifier = sessionStorage.getItem('oidc_code_verifier');
-
   if (state !== savedState) {
     throw new Error('State mismatch - possible CSRF attack');
   }
 
-  if (!codeVerifier) {
-    throw new Error('Missing code verifier');
-  }
+  const flowType = sessionStorage.getItem('oidc_flow') ?? 'idp';
+  const codeVerifier = sessionStorage.getItem('oidc_code_verifier');
 
   sessionStorage.removeItem('oidc_state');
   sessionStorage.removeItem('oidc_nonce');
   sessionStorage.removeItem('oidc_code_verifier');
+  sessionStorage.removeItem('oidc_flow');
 
   const tokenUrl = `${OIDC_CONFIG.issuer}/api/oidc/token?tenant_id=${OIDC_CONFIG.tenant_id}`;
-  
   const basicAuth = btoa(`${OIDC_CONFIG.client_id}:${OIDC_CONFIG.client_secret}`);
 
-  const response = await fetch(tokenUrl, {
+  if (flowType === 'idp') {
+    const callbackUrl = `${OIDC_CONFIG.issuer}/api/idp/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+
+    const callbackResponse = await fetch(callbackUrl, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        accept: '*/*',
+        origin: window.location.origin,
+        referer: window.location.origin + '/',
+        'x-blocks-key': OIDC_CONFIG.tenant_id,
+      },
+    });
+
+    if (!callbackResponse.ok) {
+      const errorText = await callbackResponse.text().catch(() => '');
+      throw new Error(`IDP callback failed: ${errorText || callbackResponse.statusText}`);
+    }
+
+    const callbackData: IDPCallbackResponse = await callbackResponse.json().catch(() => ({} as IDPCallbackResponse));
+
+    const refreshToken = callbackData.refresh_token ?? callbackData.refreshToken ?? null;
+    const idToken = callbackData.id_token ?? callbackData.idToken ?? null;
+
+    if (!refreshToken) {
+      throw new Error('No refresh token returned from IDP callback');
+    }
+    if (idToken) {
+      localStorage.setItem('id_token', idToken);
+    }
+
+    const refreshResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        Authorization: `Basic ${basicAuth}`,
+        'x-blocks-key': OIDC_CONFIG.tenant_id,
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: OIDC_CONFIG.client_id,
+      }),
+    });
+
+    if (!refreshResponse.ok) {
+      const errorText = await refreshResponse.text().catch(() => '');
+      throw new Error(`Token exchange failed: ${errorText || refreshResponse.statusText}`);
+    }
+
+    const tokens: TokenResponse = await refreshResponse.json();
+
+    localStorage.setItem('access_token', tokens.access_token);
+    if (tokens.id_token) localStorage.setItem('id_token', tokens.id_token);
+    if (tokens.refresh_token) localStorage.setItem('refresh_token', tokens.refresh_token);
+    localStorage.setItem('token_expiry', String(Date.now() + tokens.expires_in * 1000));
+
+    return tokens;
+  }
+
+  // OIDC authorize fallback: exchange authorization code directly
+  const tokenBody: Record<string, string> = {
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: OIDC_CONFIG.redirect_uri,
+    client_id: OIDC_CONFIG.client_id,
+  };
+  if (codeVerifier) {
+    tokenBody['code_verifier'] = codeVerifier;
+  }
+
+  const codeResponse = await fetch(tokenUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json',
-      'Authorization': `Basic ${basicAuth}`,
+      Accept: 'application/json',
+      Authorization: `Basic ${basicAuth}`,
       'x-blocks-key': OIDC_CONFIG.tenant_id,
     },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: OIDC_CONFIG.redirect_uri,
-      code_verifier: codeVerifier,
-      client_id: OIDC_CONFIG.client_id,
-    }),
+    body: new URLSearchParams(tokenBody),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Token exchange failed: ${errorText}`);
+  if (!codeResponse.ok) {
+    const errorText = await codeResponse.text().catch(() => '');
+    throw new Error(`Token exchange failed: ${errorText || codeResponse.statusText}`);
   }
 
-  const tokens: TokenResponse = await response.json();
+  const tokens: TokenResponse = await codeResponse.json();
 
   localStorage.setItem('access_token', tokens.access_token);
   if (tokens.id_token) localStorage.setItem('id_token', tokens.id_token);
