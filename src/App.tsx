@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import LandingPage from './pages/LandingPage';
-import Dashboard from './pages/Dashboard';
+import Customers from './pages/Customers';
 import ActivationPage from './pages/ActivationPage';
 import AuthCallback from './pages/AuthCallback';
 
@@ -13,7 +13,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/activate" element={<ActivationPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/customers" element={<Customers />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

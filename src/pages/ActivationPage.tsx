@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 
 const AUTH_CONFIG = {
-  authority: import.meta.env.VITE_API_URL || '',
+  authority: import.meta.env.VITE_IAM_URL || '',
   client_id: import.meta.env.VITE_CLIENT_ID || '',
   tenant_id: import.meta.env.VITE_TENANT_ID || '',
 };
