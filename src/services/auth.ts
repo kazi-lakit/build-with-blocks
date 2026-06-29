@@ -177,8 +177,6 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
       credentials: 'include',
       headers: {
         accept: '*/*',
-        origin: window.location.origin,
-        referer: window.location.origin + '/',
         'x-blocks-key': OIDC_CONFIG.tenant_id,
       },
     });
@@ -202,6 +200,7 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
 
     const refreshResponse = await fetch(tokenUrl, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
@@ -222,10 +221,11 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
 
     const tokens: TokenResponse = await refreshResponse.json();
 
-    localStorage.setItem('access_token', tokens.access_token);
+    if (tokens.access_token) localStorage.setItem('access_token', tokens.access_token);
     if (tokens.id_token) localStorage.setItem('id_token', tokens.id_token);
     if (tokens.refresh_token) localStorage.setItem('refresh_token', tokens.refresh_token);
-    localStorage.setItem('token_expiry', String(Date.now() + tokens.expires_in * 1000));
+    if (tokens.expires_in) localStorage.setItem('token_expiry', String(Date.now() + tokens.expires_in * 1000));
+    localStorage.setItem('auth_completed', '1');
 
     return tokens;
   }
@@ -243,6 +243,7 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
 
   const codeResponse = await fetch(tokenUrl, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
@@ -259,25 +260,23 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
 
   const tokens: TokenResponse = await codeResponse.json();
 
-  localStorage.setItem('access_token', tokens.access_token);
+  if (tokens.access_token) localStorage.setItem('access_token', tokens.access_token);
   if (tokens.id_token) localStorage.setItem('id_token', tokens.id_token);
   if (tokens.refresh_token) localStorage.setItem('refresh_token', tokens.refresh_token);
-  localStorage.setItem('token_expiry', String(Date.now() + tokens.expires_in * 1000));
+  if (tokens.expires_in) localStorage.setItem('token_expiry', String(Date.now() + tokens.expires_in * 1000));
+  localStorage.setItem('auth_completed', '1');
 
   return tokens;
 }
 
 export async function getUserInfo(): Promise<OIDCUserInfo | null> {
-  const accessToken = localStorage.getItem('access_token');
-  if (!accessToken) return null;
-
   const userInfoUrl = `${OIDC_CONFIG.issuer}/api/auth/me?tenant_id=${OIDC_CONFIG.tenant_id}`;
-  
+
   try {
     const response = await fetch(userInfoUrl, {
       method: 'GET',
+      credentials: 'include',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
         'x-blocks-key': OIDC_CONFIG.tenant_id,
       },
@@ -304,6 +303,7 @@ export async function refreshAccessToken(): Promise<boolean> {
   try {
     const response = await fetch(tokenUrl, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${basicAuth}`,
@@ -337,6 +337,7 @@ export async function logout(): Promise<void> {
     try {
       await fetch(revokeUrl, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Authorization': `Basic ${basicAuth}`,
@@ -357,6 +358,7 @@ export async function logout(): Promise<void> {
   localStorage.removeItem('id_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('token_expiry');
+  localStorage.removeItem('auth_completed');
   sessionStorage.removeItem('oidc_state');
   sessionStorage.removeItem('oidc_nonce');
   sessionStorage.removeItem('oidc_code_verifier');
@@ -365,8 +367,9 @@ export async function logout(): Promise<void> {
 }
 
 export function isAuthenticated(): boolean {
+  if (localStorage.getItem('auth_completed') !== '1') return false;
   const expiry = localStorage.getItem('token_expiry');
-  if (!expiry) return false;
+  if (!expiry) return true; // cookie-based session — trust until getUserInfo fails
   return Date.now() < parseInt(expiry, 10);
 }
 
