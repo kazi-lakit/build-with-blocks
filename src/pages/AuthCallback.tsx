@@ -14,7 +14,7 @@ export function AuthCallback() {
     const process = async () => {
       try {
         await handleAuthorizationCallback();
-        navigate('/dashboard', { replace: true });
+        navigate('/customers', { replace: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Authentication failed';
         setError(message);

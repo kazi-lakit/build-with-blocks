@@ -1,7 +1,10 @@
 import { sha256 } from 'js-sha256';
 
 const OIDC_CONFIG = {
-  issuer: import.meta.env.VITE_API_URL || 'https://dev-iam.blocksdevelopers.com',
+  // used only for browser redirect to the IDP login page
+  iam_url: import.meta.env.VITE_IAM_URL || 'https://dev-iam.blocksdevelopers.com',
+  // used for all API fetch calls (initiate, callback, token, me, revoke)
+  api_base: `${import.meta.env.VITE_API_BASE_URL || 'https://dev-api.blocksdevelopers.com'}/iam/v4`,
   tenant_id: import.meta.env.VITE_TENANT_ID || '',
   client_id: import.meta.env.VITE_CLIENT_ID || '',
   client_secret: import.meta.env.VITE_CLIENT_SECRET || '',
@@ -64,7 +67,7 @@ export async function startAuthorization(): Promise<void> {
   sessionStorage.setItem('oidc_nonce', nonce);
   sessionStorage.setItem('oidc_code_verifier', codeVerifier);
 
-  const initiateUrl = new URL(`${OIDC_CONFIG.issuer}/api/idp/initiate`);
+  const initiateUrl = new URL(`${OIDC_CONFIG.api_base}/idp/initiate`);
   initiateUrl.searchParams.set('x-blocks-key', OIDC_CONFIG.tenant_id);
   initiateUrl.searchParams.set('clientId', OIDC_CONFIG.client_id);
   initiateUrl.searchParams.set('redirectUri', OIDC_CONFIG.redirect_uri);
@@ -123,7 +126,7 @@ export async function startAuthorization(): Promise<void> {
     tenant_id: OIDC_CONFIG.tenant_id,
   });
 
-  window.location.href = `${OIDC_CONFIG.issuer}/api/oidc/authorize?${params.toString()}`;
+  window.location.href = `${OIDC_CONFIG.iam_url}/api/oidc/authorize?${params.toString()}`;
 }
 
 interface IDPCallbackResponse {
@@ -166,11 +169,11 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
   sessionStorage.removeItem('oidc_code_verifier');
   sessionStorage.removeItem('oidc_flow');
 
-  const tokenUrl = `${OIDC_CONFIG.issuer}/api/oidc/token?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const tokenUrl = `${OIDC_CONFIG.api_base}/oidc/token`;
   const basicAuth = btoa(`${OIDC_CONFIG.client_id}:${OIDC_CONFIG.client_secret}`);
 
   if (flowType === 'idp') {
-    const callbackUrl = `${OIDC_CONFIG.issuer}/api/idp/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+    const callbackUrl = `${OIDC_CONFIG.api_base}/idp/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
 
     const callbackResponse = await fetch(callbackUrl, {
       method: 'GET',
@@ -270,7 +273,7 @@ export async function handleAuthorizationCallback(): Promise<TokenResponse | nul
 }
 
 export async function getUserInfo(): Promise<OIDCUserInfo | null> {
-  const userInfoUrl = `${OIDC_CONFIG.issuer}/api/auth/me?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const userInfoUrl = `${OIDC_CONFIG.api_base}/auth/me`;
 
   try {
     const response = await fetch(userInfoUrl, {
@@ -297,7 +300,7 @@ export async function refreshAccessToken(): Promise<boolean> {
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) return false;
 
-  const tokenUrl = `${OIDC_CONFIG.issuer}/api/oidc/token?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const tokenUrl = `${OIDC_CONFIG.api_base}/oidc/token`;
   const basicAuth = btoa(`${OIDC_CONFIG.client_id}:${OIDC_CONFIG.client_secret}`);
 
   try {
@@ -330,7 +333,7 @@ export async function refreshAccessToken(): Promise<boolean> {
 
 export async function logout(): Promise<void> {
   const idToken = localStorage.getItem('id_token');
-  const revokeUrl = `${OIDC_CONFIG.issuer}/api/oidc/revoke?tenant_id=${OIDC_CONFIG.tenant_id}`;
+  const revokeUrl = `${OIDC_CONFIG.api_base}/oidc/revoke`;
   const basicAuth = btoa(`${OIDC_CONFIG.client_id}:${OIDC_CONFIG.client_secret}`);
 
   if (idToken) {
